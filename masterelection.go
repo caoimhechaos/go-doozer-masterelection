@@ -158,8 +158,12 @@ func (m *MasterElectionClient) run() {
 			// Master election has been forced.
 			m.runMasterElection()
 		} else if ev.IsSet() {
-			// We're just receiving a master update.
-			m.cb.BecomeSlave(string(ev.Body))
+			var master = string(ev.Body)
+
+			if m.own_addr.String() != master {
+				// We're just receiving a master update.
+				m.cb.BecomeSlave(string(ev.Body))
+			}
 		}
 
 		// Update our idea of the revision.
