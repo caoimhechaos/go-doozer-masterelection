@@ -69,7 +69,7 @@ func main() {
 	var name string
 	var addr string
 	var naddr net.Addr
-	var participating, force_election bool
+	var participating, force_election, wait bool
 	var me *masterelection.MasterElectionClient
 	var err error
 
@@ -79,6 +79,8 @@ func main() {
 		"Whether to participate in master elections")
 	flag.BoolVar(&force_election, "force-election", false,
 		"Force an election when starting")
+	flag.BoolVar(&wait, "wait", true,
+		"Wait after connecting (set to false if you only want to force an election)")
 
 	flag.StringVar(&addr, "address",
 		"[::1]:"+strconv.FormatInt(int64(os.Getpid()), 10),
@@ -112,5 +114,7 @@ func main() {
 		me.ForceMasterElection()
 	}
 
-	me.SyncWait()
+	if wait {
+		me.SyncWait()
+	}
 }
