@@ -35,6 +35,7 @@ package masterelection
 
 import (
 	"net"
+	"sync"
 
 	"github.com/ha/doozer"
 )
@@ -78,6 +79,7 @@ type MasterElectionClient struct {
 	old_rev       int64
 	cb            MasterElectionEventReceiver
 	path          string
+	wg            sync.WaitGroup
 }
 
 // Create a new master election client for the elections with the given
@@ -99,7 +101,7 @@ func NewMasterElectionClient(conn *doozer.Conn, name string, addr net.Addr,
 		path:          "/ns/service/master/" + name,
 	}
 
-	go ret.run()
+	ret.init()
 	return ret, nil
 }
 
@@ -107,12 +109,14 @@ func NewMasterElectionClient(conn *doozer.Conn, name string, addr net.Addr,
 // Changes to the master election file are detected and reported.
 // If we want to be eligible as masters, participation in master
 // elections will also take place here.
-func (m *MasterElectionClient) run() {
+func (m *MasterElectionClient) init() {
 	var data []byte
 	var err error
 
+	m.wg.Add(1)
+
 	data, m.old_rev, err = m.conn.Get(m.path, nil)
-	if err == doozer.ErrNoEnt {
+	if err == doozer.ErrNoEnt || m.old_rev == 0 {
 		m.old_rev, err = m.conn.Rev()
 		if err != nil {
 			m.cb.ElectionFatal(err)
@@ -125,13 +129,19 @@ func (m *MasterElectionClient) run() {
 		m.cb.ElectionFatal(err)
 		return
 	} else {
+		m.old_rev += 1
 		m.cb.BecomeSlave(string(data))
 	}
 
-	data = make([]byte, 0) // clear data
+	go m.run()
+}
 
+func (m *MasterElectionClient) run() {
+	defer m.wg.Done()
 	for {
 		var ev doozer.Event
+		var err error
+
 		ev, err = m.conn.Wait(m.path, m.old_rev)
 		if err != nil {
 			m.cb.ElectionError(err)
@@ -140,6 +150,7 @@ func (m *MasterElectionClient) run() {
 
 		// Make sure our path matches exactly
 		if ev.Path != m.path {
+			m.old_rev = ev.Rev + 1
 			continue
 		}
 
@@ -152,7 +163,7 @@ func (m *MasterElectionClient) run() {
 		}
 
 		// Update our idea of the revision.
-		m.old_rev = ev.Rev
+		m.old_rev = ev.Rev + 1
 	}
 }
 
@@ -166,7 +177,7 @@ func (m *MasterElectionClient) runMasterElection() {
 	if err == nil {
 		err = m.cb.BecomeMaster()
 		if err != nil {
-			m.old_rev = rev
+			m.old_rev = rev + 1
 
 			// We failed to become master, so we must force a new election.
 			m.ForceMasterElection()
@@ -174,7 +185,7 @@ func (m *MasterElectionClient) runMasterElection() {
 		}
 
 		// We are now a new master!
-		m.old_rev = rev
+		m.old_rev = rev + 1
 		return
 	} else if err != doozer.ErrTooLate {
 		m.cb.ElectionError(err)
@@ -186,7 +197,7 @@ func (m *MasterElectionClient) runMasterElection() {
 		m.cb.ElectionError(err)
 		return
 	}
-	m.old_rev = rev
+	m.old_rev = rev + 1
 	m.cb.BecomeSlave(string(new_master))
 }
 
@@ -197,4 +208,9 @@ func (m *MasterElectionClient) ForceMasterElection() error {
 		m.cb.ElectionError(err)
 	}
 	return err
+}
+
+// Wait synchronously for the master election to exit (basically never).
+func (m *MasterElectionClient) SyncWait() {
+	m.wg.Wait()
 }
