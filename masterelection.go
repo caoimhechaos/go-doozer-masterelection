@@ -187,7 +187,7 @@ func (m *MasterElectionClient) runMasterElection() {
 		// We are now a new master!
 		m.old_rev = rev + 1
 		return
-	} else if err != doozer.ErrTooLate {
+	} else if err != doozer.ErrTooLate && err != doozer.ErrOldRev {
 		m.cb.ElectionError(err)
 	}
 
@@ -204,7 +204,7 @@ func (m *MasterElectionClient) runMasterElection() {
 // Force a master election to take place right now.
 func (m *MasterElectionClient) ForceMasterElection() error {
 	var err error = m.conn.Del(m.path, m.old_rev)
-	if err != nil && err != doozer.ErrTooLate {
+	if err != nil && err != doozer.ErrTooLate && err != doozer.ErrOldRev {
 		m.cb.ElectionError(err)
 	}
 	return err
