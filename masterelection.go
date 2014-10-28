@@ -79,6 +79,7 @@ type MasterElectionClient struct {
 	old_rev       int64
 	cb            MasterElectionEventReceiver
 	path          string
+	master        string
 	wg            sync.WaitGroup
 }
 
@@ -130,7 +131,8 @@ func (m *MasterElectionClient) init() {
 		return
 	} else {
 		m.old_rev += 1
-		m.cb.BecomeSlave(string(data))
+		m.master = string(data)
+		m.cb.BecomeSlave(m.master)
 	}
 
 	go m.run()
@@ -162,7 +164,8 @@ func (m *MasterElectionClient) run() {
 
 			if m.own_addr.String() != master {
 				// We're just receiving a master update.
-				m.cb.BecomeSlave(string(ev.Body))
+				m.master = string(ev.Body)
+				m.cb.BecomeSlave(m.master)
 			}
 		}
 
@@ -202,7 +205,8 @@ func (m *MasterElectionClient) runMasterElection() {
 		return
 	}
 	m.old_rev = rev + 1
-	m.cb.BecomeSlave(string(new_master))
+	m.master = string(new_master)
+	m.cb.BecomeSlave(m.master)
 }
 
 // Force a master election to take place right now.
@@ -212,6 +216,30 @@ func (m *MasterElectionClient) ForceMasterElection() error {
 		m.cb.ElectionError(err)
 	}
 	return err
+}
+
+// Get what we think is currently the master. This is a very cheap
+// operation which only reads local state.
+//
+// Please note that there is no guarantee that the data will still be
+// valid at the time it is used.
+func (m *MasterElectionClient) GetCurrentMaster() string {
+	return m.master
+}
+
+// Force a read of the current master from Doozer. This will not update
+// the internal state as that would confuse the notion of whether we're
+// currently the master or a slave. This operation is rather expensive
+// and GetCurrentMaster should be preferred when possible.
+//
+// Please note that there is no guarantee that the data will still be
+// valid at the time it is used.
+func (m *MasterElectionClient) ReadCurrentMaster() (string, error) {
+	var data []byte
+	var err error
+
+	data, _, err = m.conn.Get(m.path, nil)
+	return string(data), err
 }
 
 // Wait synchronously for the master election to exit (basically never).
