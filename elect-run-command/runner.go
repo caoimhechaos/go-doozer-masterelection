@@ -62,6 +62,7 @@ func (p *Printer) BecomeMaster() error {
 		out, err = cmd.CombinedOutput()
 		if err != nil {
 			log.Print("Error getting output from error command: ", err)
+			return err
 		} else {
 			log.Print(string(out))
 		}
