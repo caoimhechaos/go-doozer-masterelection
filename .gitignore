@@ -23,4 +23,5 @@ _testmain.go
 *.test
 *.prof
 
+elect-run-command/elect-run-command
 testclient/testclient
